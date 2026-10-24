@@ -1,0 +1,18 @@
+Release:
+    # The GitHib tag to be used for this release (mandatory)
+    Tag: 2.999.51
+    # Version number (usually the same as the Tag)
+    Version: 2.999.51
+    # Text description (Optional)
+    Description: Beta 1, NUttX 12, Managed Code
+    # Type of release (Full or Beta)
+    Type: Beta
+    # Information about the NuttX firmware
+    OS:
+        # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
+        Source: Rebase
+        # Commit to be used as the source of this release
+        Commit: a1998725c8b40e02000980081933ddb31377c81e
+    ESP32:
+        # Commit to be used as the source of this release
+        Commit: cb1fcc47e012af844d2ae441a0f3f7726a64d248
