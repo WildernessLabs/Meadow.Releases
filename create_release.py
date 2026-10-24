@@ -4,7 +4,7 @@ Create a Meadow release in the Meadow.Releases repository.
 
 Reads release.yaml, checks it against the source repositories, downloads the binaries built by
 GitHub Actions for the pinned commits, stages the release assets (zips, manifest, sources) and
-creates the GitHub Release.  See ReleasePlanning.md for the design.
+creates the GitHub Release, tags the source commits and moves the version on.  See README.md.
 
     ./create_release.py --dry-run          run every check and stage the assets, publish nothing
     ./create_release.py                    the same, then create the release (asks first)
@@ -288,6 +288,47 @@ def check_releases_repo(repo, tag, dry_run):
 
 
 #
+#   Tagging the source commits.  After the release the pinned commit in each source repository gets
+#   the release tag (an annotated tag), so the release can be found from the source.  An existing
+#   tag on the same commit is left alone; a tag on a different commit is an error, because tags
+#   are never moved.
+#
+def tag_state(repo, tag, sha):
+    """Return 'create', 'exists' (already on sha), or None (after reporting an error)."""
+    try:
+        ref = gh_json(f"repos/{repo}/git/ref/tags/{tag}")["object"]
+    except GhError:
+        return "create"
+    target = ref["sha"]
+    if ref["type"] == "tag":
+        target = gh_json(f"repos/{repo}/git/tags/{target}")["object"]["sha"]
+    if target == sha:
+        return "exists"
+    fail(f"{repo} already has a tag '{tag}' on a different commit ({target[:8]}, not {sha[:8]}); tags are not moved")
+    return None
+
+
+def do_tag(repo, tag, sha, releases_repo):
+    if tag_state(repo, tag, sha) == "exists":
+        ok(f"{repo}: tag {tag} is already on {sha[:8]}")
+        return
+    message = f"Meadow release {tag}\n\nhttps://github.com/{releases_repo}/releases/tag/{tag}\n"
+    created = json.loads(gh("api", "-X", "POST", f"repos/{repo}/git/tags", "-f", f"tag={tag}",
+                            "-f", f"message={message}", "-f", f"object={sha}", "-f", "type=commit"))
+    gh("api", "-X", "POST", f"repos/{repo}/git/refs", "-f", f"ref=refs/tags/{tag}", "-f", f"sha={created['sha']}")
+    ok(f"{repo}: tagged {sha[:8]} as {tag}")
+
+
+def check_push_access(repo, dry_run):
+    permissions = gh_json(f"repos/{repo}").get("permissions", {})
+    if permissions.get("push") or permissions.get("admin"):
+        ok(f"write access to {repo} (for the tag and the version bump)")
+    else:
+        (warn if dry_run else fail)(f"your GitHub login does not have write access to {repo}, "
+                                     f"which the tag and the version bump need")
+
+
+#
 #   Version bump.  After a release the version.txt of the source repositories moves on: y goes up
 #   by 2 from a beta (odd) and by 1 from a full release (even), so the next build is a beta.  The
 #   change goes on a branch meadow-<new version> and a pull request to the base branch in
@@ -377,6 +418,9 @@ def main():
     parser.add_argument("--work-dir", help="where to download and stage; each run uses a new timestamped folder inside it (default work/<tag> beside this script)")
     parser.add_argument("--skip-sources", action="store_true", help="do not download the source archives")
     parser.add_argument("--repo", help="the Releases repository (default: this checkout's origin)")
+    parser.add_argument("--tag-only", action="store_true",
+                        help="only tag the source commits with the release tag; use to repeat tagging "
+                             "that failed after the release was published")
     parser.add_argument("--bump-only", action="store_true",
                         help="only do the version bump (branch, commit, pull request) for the versions in release.yaml; "
                              "use to repeat a bump that failed after the release was published")
@@ -491,6 +535,30 @@ def main():
         tag = tag_text
         warn(f"Tag '{tag}' is not the same as the version '{version_text}'")
     ok(f"tag {tag}")
+
+    say("")
+    say("Source repository tags and access")
+    tag_targets = [(os_repo, os_sha), (ESP32_REPO, esp_sha)]
+    for repo, sha in tag_targets:
+        state = tag_state(repo, tag, sha)
+        if state == "create":
+            ok(f"{repo}: tag {tag} will be created on {sha[:8]}")
+        elif state == "exists":
+            ok(f"{repo}: tag {tag} is already on {sha[:8]}")
+        check_push_access(repo, args.dry_run)
+
+    if args.tag_only:
+        if errors:
+            return finish(args)
+        if args.dry_run:
+            say("DRY RUN: nothing was changed.")
+            return 0
+        if not args.yes and input(f"Type the tag '{tag}' to tag the source commits: ").strip() != tag:
+            say("not confirmed, nothing changed")
+            return 1
+        for repo, sha in tag_targets:
+            do_tag(repo, tag, sha, releases_repo_name(args.repo))
+        return 0
 
     releases_repo = releases_repo_name(args.repo)
     say("")
@@ -659,6 +727,16 @@ def main():
                "--notes-file", str(notes), "--target", target_commit]
     command += ["--prerelease", "--latest=false"] if kind == "Beta" else ["--latest"]
     say(gh(*command).strip())
+
+    say("")
+    say("Tagging the source commits")
+    try:
+        for repo, sha in tag_targets:
+            do_tag(repo, tag, sha, releases_repo)
+    except GhError as e:
+        say(f"  ERROR: tagging failed after the release was published: {e}")
+        say("  The release stands.  Fix the cause and run again with --tag-only (and --bump-only).")
+        return 1
 
     say("")
     say("Version bump")

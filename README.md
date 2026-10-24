@@ -10,8 +10,7 @@ repositories:
   (`bootloader.bin`, `partition-table.bin`, `MeadowComms.bin`).
 
 The releases are published as GitHub Releases in this repository, in the layout the Meadow CLI
-(`meadow firmware download`) expects.  The design and the reasons for it are in
-[ReleasePlanning.md](ReleasePlanning.md).
+(`meadow firmware download`) expects.
 
 A release is made by running `create_release.py` from a laptop, by a release manager.  The script
 does the work; the release manager decides which commits go in.
@@ -20,7 +19,8 @@ does the work; the release manager decides which commits go in.
 
 - Python 3.9 or later and PyYAML (`pip install pyyaml`).
 - The [GitHub CLI](https://cli.github.com/) (`gh`), logged in (`gh auth login`) with write access to
-  this repository, and to Meadow.OS and Meadow-ESP32 (the version bump opens pull requests there).
+  this repository, and to Meadow.OS and Meadow-ESP32 (the script tags commits and opens pull requests
+  there).
 - A clone of this repository.  The script does not need clones of the other two.
 
 ## The release file
@@ -148,7 +148,8 @@ gh run list -R WildernessLabs/Meadow-ESP32 --workflow Build --event push --branc
    ```
 
    It repeats all the checks, prints a summary and asks you to type the tag to confirm.  Then it
-   creates the GitHub Release (a beta is a pre-release), and does the version bump.
+   creates the GitHub Release (a beta is a pre-release), tags the source commits, and does the version
+   bump.
 
 Each run works in a new timestamped folder under `work/`, which git ignores.  Delete old ones when
 you no longer need them.
@@ -162,6 +163,7 @@ you no longer need them.
 - The Mono runtime pinned by `MONO_RUNTIME_COMMIT` at the OS commit exists, with the right tree.
 - Your login can write to this repository, and the tag and release do not already exist.
 - `release.yaml` is committed and pushed (a warning in a dry run, an error in a real one).
+- You can write to Meadow.OS and Meadow-ESP32, and neither has the release tag on a different commit.
 - A successful push build exists for each commit, and its artifacts have not expired.
 - The binaries came from the commits: the OS `build-info.json` and the build stamp in
   `Meadow.OS.Update.bin`, the build hash in `MeadowComms.bin`, and the ESP32 `.md5` files.
@@ -176,6 +178,28 @@ you no longer need them.
 | `manifest.json` | Generated: version, type, the SHA-256 of every file, and the full source commits |
 | `release.yaml` | The release file that was used |
 | `sources-*.tar.gz` | The Meadow.OS and Meadow-ESP32 sources at the released commits |
+
+## Tagging the source commits
+
+After the release is published the script tags the released commit in each source repository with
+the release tag, for example `2.999.51.3`, so a release can be found from the source.  The tag is an
+annotated tag whose message links to the release.  Tags are created in Meadow.OS and Meadow-ESP32,
+not in Meadow-ESP32's other branches or in the runtime.
+
+- A tag that already exists on the same commit is left alone.
+- A tag that exists on a different commit is an error: tags are never moved.  The dry run reports
+  it before anything is published.
+- Tagging happens before the version bump.  The tags are on branch commits, so they do not start the
+  build workflows, which run on branch pushes only.  (A commit that is tagged is reported with its
+  tag instead of its branch name in the build info of any later build of it.)
+
+If tagging fails after the release was published, the release stands.  Fix the cause and repeat just
+the tagging:
+
+```bash
+./create_release.py --tag-only --dry-run      # see what it would do
+./create_release.py --tag-only                # do it (asks you to type the tag)
+```
 
 ## The version bump
 
@@ -210,6 +234,7 @@ the cause and run just the bump again:
 | `release.yaml says version ... but the derived version is ...` | You typed a build number that does not match.  Leave it out (`major.minor.y`). |
 | `version.txt is ..., but release.yaml says ...` | The commit is on a different version line from the one you asked for. |
 | `Type ... does not match version` | An odd `y` is a Beta and an even `y` is a Full release. |
+| `... already has a tag ... on a different commit` | A source repository already has the release tag on another commit.  Tags are not moved; check the version and the commits. |
 | `a tag named ... already exists` | That version was already released.  Releases are never replaced; choose a new commit and version. |
 | `release.yaml has uncommitted changes` | Commit and push it before a real release. |
 | `Meadow.OS.Update.bin is not stamped with build ...` | The CI build counted a different build number.  Do not release that commit. |
@@ -219,5 +244,6 @@ the cause and run just the bump again:
 - `OS.Source: Legacy` is not supported, and old releases have not been imported from S3.
 - The Meadow CLI still reads the old S3 location.  It must be changed to download from these
   releases and to check the SHA-256 values in `manifest.json`.
-- Tag and release creation is not yet restricted to release managers on GitHub (tag rules, review
-  of `release.yaml`, immutable releases).  See "Access control" in ReleasePlanning.md.
+- Tag and release creation is not yet restricted to release managers on GitHub.  This repository
+  needs a tag ruleset limiting who can create, move or delete release tags, review (CODEOWNERS) of
+  `release.yaml` and the script, and GitHub's immutable releases setting.
