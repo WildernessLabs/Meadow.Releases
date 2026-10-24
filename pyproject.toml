@@ -1,0 +1,21 @@
+# Settings for the linters used on create_release.py.  The script itself needs no packaging.
+
+[tool.ruff]
+line-length = 120
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "D", "B", "UP", "N", "C4", "SIM"]
+# D203 and D213 contradict D211 and D212; the others are the style used in the script.
+ignore = ["D203", "D213"]
+
+[tool.pylint.format]
+max-line-length = 120
+# Most of the length is docstrings; the script is deliberately one file.
+max-module-lines = 1200
+
+[tool.pylint.design]
+# The dataclasses hold a release's fields, and the release steps need the context they work on.
+max-attributes = 10
+max-args = 7
+max-positional-arguments = 7

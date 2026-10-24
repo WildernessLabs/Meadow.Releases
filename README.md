@@ -239,6 +239,18 @@ the cause and run just the bump again:
 | `release.yaml has uncommitted changes` | Commit and push it before a real release. |
 | `Meadow.OS.Update.bin is not stamped with build ...` | The CI build counted a different build number.  Do not release that commit. |
 
+## Changing the script
+
+`create_release.py` is typed and documented.  The logic that needs no network has unit tests:
+
+```bash
+python3 -m unittest -v
+```
+
+The settings for the linters (ruff and pylint) are in `pyproject.toml`; the script is checked with
+ruff, pylint and `mypy --strict`.  After a change, run the tests, then a `--dry-run` against a real
+release file.
+
 ## Not done yet
 
 - `OS.Source: Legacy` is not supported, and old releases have not been imported from S3.
