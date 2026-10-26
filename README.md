@@ -32,6 +32,10 @@ Release:
     Tag: 2.999.51
     Version: 2.999.51
     Description: Beta 1, NuttX 12, Managed Code
+    Notes: |
+        ## Highlights
+        - NuttX 12
+        - Managed code updates
     Type: Beta
     OS:
         Source: Rebase
@@ -44,7 +48,8 @@ Release:
 |-------|---------|
 | `Version` | `major.minor.y`, for example `2.999.51`.  The script adds the build number (see below). You may write all four parts, in which case the script checks them. |
 | `Tag` | Optional.  Leave it out, or make it the same as `Version`, and the tag is the full version, for example `2.999.51.3`. |
-| `Description` | Optional text for the release title and notes. |
+| `Description` | Optional text for the release title and notes.  Keep it to one line. |
+| `Notes` | Optional Markdown for the body of the release, shown after the description.  Write it as a YAML block (`Notes: \|` with the text indented below it) to keep several lines. |
 | `Type` | Optional, `Beta` or `Full`.  It is worked out from `y`, and the script stops if it disagrees. |
 | `OS.Source` | `Rebase` or `Meadow.OS` (the Meadow.OS repository).  `Legacy` is not supported yet. |
 | `OS.Commit` | The Meadow.OS commit to release. |
@@ -238,6 +243,75 @@ the cause and run just the bump again:
 | `a tag named ... already exists` | That version was already released.  Releases are never replaced; choose a new commit and version. |
 | `release.yaml has uncommitted changes` | Commit and push it before a real release. |
 | `Meadow.OS.Update.bin is not stamped with build ...` | The CI build counted a different build number.  Do not release that commit. |
+
+## Importing historical releases
+
+`import_history.py` adds old firmware releases to this repository so the CLI can download them.  Put
+each version in its own folder, in the layout the Meadow CLI keeps its downloaded firmware in
+(`work/History/<version>/`; `work/` is not tracked by git, so the history folder stays on your
+machine):
+
+```
+work/History/1.0.0.0/
+    Meadow.OS.bin  Meadow.OS.Update.bin  Meadow.OS.Runtime.bin
+    bootloader.bin  partition-table.bin  MeadowComms.bin
+    build-info.json                      (optional, records the OS commit and build date)
+    meadow_assemblies/                   (the .dll and .pdb files)
+work/History/1.0.0.0.md                  (optional release notes, in Markdown)
+```
+
+The release notes file sits beside the folder and has the same name plus `.md`.  If it is there its
+contents go into the body of the release, after the description.  A notes file with no folder of
+the same name (a misnamed file, for example) is reported as a warning and not used.
+
+Then:
+
+```bash
+./import_history.py --dry-run          # check everything and stage the assets, publish nothing
+./import_history.py                    # the same, then create the releases (asks you to type 'import')
+```
+
+For each version it creates a release named after the folder, in the same form as a new release:
+`Meadow.OS.zip`, `Meadow.Network.zip`, `manifest.json`, `build-info.json`, and the OS source archive
+when the commit is known.  The manifest says `"generation": "legacy"` and `"imported": true`.
+Historical releases are never marked as the latest release.  Options: `--version V` (repeatable) to
+import some versions only, `--skip-existing` to carry on after a failure or a re-run, `--skip-sources`
+to leave out the large source archive (the 1.0.0.0 one is about 145 MB), and `--info FILE`.
+
+### What a historical release does not have
+
+- **The ESP32 source commit** is not in the binaries, so the manifest records it as `null` and the
+  ESP32 source is not saved.  If you know it, add it to `history.yaml`.
+- **The OS source** is saved only if `build-info.json` is there and the commit is in
+  `WildernessLabs/Meadow` (the repository the historical OS was built from).  Submodule contents
+  are not included, as for new releases.
+- **No debug symbols**, no `.md5` files for the ESP32 binaries, and no runtime pin: none of these
+  were saved with the old builds.
+- **The minimum CLI version** is not recorded anywhere, so it is `0.0.0` (any CLI) unless you give it.
+- **The date.**  GitHub dates a release when it is created, so the release shows the day you
+  imported it.  The real build date is in the manifest (`buildDate`) and the release notes.
+- Each tag points at the current pushed commit of this repository, not at the original source.
+
+### history.yaml
+
+Facts that the folders do not hold go in an optional `work/History/history.yaml` (or the file named
+by `--info`).  Every field is optional:
+
+```yaml
+Releases:
+    1.0.0.0:
+        Description: Meadow 1.0
+        Type: Full                  # Beta or Full; default Full
+        MinCLIVersion: 1.0.0
+        OS:
+            Commit: <full commit in WildernessLabs/Meadow>     # overrides build-info.json
+        ESP32:
+            Commit: <full commit in WildernessLabs/Meadow-ESP32>
+```
+
+A version tag such as `1.0.0.0` cannot clash with new releases, which have versions like `2.999.51.3`.
+Check the dry run output before the real run: it lists every warning (for example the unknown ESP32
+commit) and tells you if a tag or release already exists.
 
 ## Changing the script
 

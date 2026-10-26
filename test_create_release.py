@@ -74,6 +74,21 @@ class ReleaseFile(unittest.TestCase):
         self.assertEqual(spec.version, "2.999.51")
         self.assertEqual(spec.min_cli_version, cr.DEFAULT_MIN_CLI_VERSION)
 
+    def test_multiline_notes(self) -> None:
+        """Notes written as a YAML block keep their lines, so Markdown survives."""
+        spec = self.load("Release:\n  Version: 2.999.51\n  Notes: |\n    ## Highlights\n    - NuttX 12\n\n"
+                         "    ## Known issues\n    - None\n")
+        self.assertEqual(spec.notes, "## Highlights\n- NuttX 12\n\n## Known issues\n- None")
+        self.assertEqual(self.load("Release:\n  Version: 2.999.51\n").notes, "")
+
+    def test_release_notes(self) -> None:
+        """The release body is the description, the notes, then the version and commits."""
+        spec = self.load("Release:\n  Version: 2.999.51\n  Description: Beta 1\n  Notes: |\n    - NuttX 12\n")
+        sources = cr.Sources("WildernessLabs/Meadow.OS", "a" * 40, "b" * 40, [2, 999, 51, 3], kind="Beta")
+        self.assertEqual(cr.release_notes(spec, sources),
+                         f"Beta 1\n\n- NuttX 12\n\nVersion 2.999.51.3 (Beta)\n\n"
+                         f"- Meadow.OS {'a' * 40}\n- Meadow-ESP32 {'b' * 40}\n- runtime unknown\n")
+
     def test_missing_release_section(self) -> None:
         """A file without a Release section is reported, not a traceback."""
         with self.assertRaises(cr.ReleaseFileError):
