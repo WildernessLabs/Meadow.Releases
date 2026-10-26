@@ -131,6 +131,7 @@ class ReleaseSpec:
     tag: str
     version: str
     description: str
+    notes: str
     declared_type: str
     min_cli_version: str
     os_source: str
@@ -302,6 +303,7 @@ def load_release_file(path: Path) -> ReleaseSpec:
         tag=text(release, "Tag"),
         version=text(release, "Version"),
         description=text(release, "Description"),
+        notes=text(release, "Notes"),
         declared_type=text(release, "Type"),
         min_cli_version=text(release, "MinCLIVersion") or DEFAULT_MIN_CLI_VERSION,
         os_source=text(release.get("OS"), "Source"),
@@ -465,13 +467,16 @@ def has_write_access(repo: str) -> bool:
     return bool(permissions.get("push") or permissions.get("admin"))
 
 
-def check_releases_repo(repo: str, tag: str, dry_run: bool, report: Report) -> str | None:
-    """Check the Releases repository.  Return the commit the tag will point at (the one holding release.yaml)."""
+def check_new_release(repo: str, tag: str, report: Report) -> bool:
+    """Check we can write to the Releases repository and that it has no tag or release called `tag`.
+
+    Returns False, after reporting, if the repository cannot be read.
+    """
     try:
         writable = has_write_access(repo)
     except GhError as error:
         report.fail(f"cannot read {repo}: {error}")
-        return None
+        return False
     if writable:
         report.ok(f"write access to {repo}")
     else:
@@ -483,14 +488,25 @@ def check_releases_repo(repo: str, tag: str, dry_run: bool, report: Report) -> s
             report.fail(f"a {kind} named '{tag}' already exists in {repo}")
         except GhError:
             report.ok(f"no {kind} named '{tag}' in {repo}")
+    return True
 
-    if git_output("status", "--porcelain", "--", "release.yaml"):
-        report.problem("release.yaml has uncommitted changes; commit and push it before a real release "
-                       "(the tag points at the commit holding it)", not dry_run)
+
+def check_head_pushed(dry_run: bool, report: Report) -> str:
+    """Check this checkout's commit is on GitHub, and return it (new tags point at it)."""
     head = git_output("rev-parse", "HEAD")
     if not git_output("branch", "-r", "--contains", head):
         report.problem("the current commit of the Releases repository is not pushed", not dry_run)
     return head
+
+
+def check_releases_repo(repo: str, tag: str, dry_run: bool, report: Report) -> str | None:
+    """Check the Releases repository.  Return the commit the tag will point at (the one holding release.yaml)."""
+    if not check_new_release(repo, tag, report):
+        return None
+    if git_output("status", "--porcelain", "--", "release.yaml"):
+        report.problem("release.yaml has uncommitted changes; commit and push it before a real release "
+                       "(the tag points at the commit holding it)", not dry_run)
+    return check_head_pushed(dry_run, report)
 
 
 # Tagging the source commits.  After the release the pinned commit in each source repository gets
@@ -814,14 +830,20 @@ def stage_assets(spec: ReleaseSpec, sources: Sources, binaries: Binaries, work: 
     release_copy = out / "release.yaml"
     release_copy.write_bytes(spec.path.read_bytes())
 
-    runtime = sources.runtime
     notes = out / "notes.md"
-    notes.write_text(
-        f"{spec.description}\n\nVersion {sources.version_text} ({sources.kind})\n\n"
-        f"- Meadow.OS {sources.os_sha}\n- Meadow-ESP32 {sources.esp_sha}\n"
-        f"- runtime {runtime['commit'] if runtime else 'unknown'}\n", encoding="utf-8")
+    notes.write_text(release_notes(spec, sources), encoding="utf-8")
     title = f"{spec.description} ({sources.version_text})" if spec.description else sources.version_text
     return Staged(out, zips + [manifest_path, release_copy] + archives, notes, title)
+
+
+def release_notes(spec: ReleaseSpec, sources: Sources) -> str:
+    """Return the Markdown body of the GitHub Release: the description, any Notes, then the version and commits."""
+    runtime = sources.runtime
+    parts = [part for part in (spec.description, spec.notes) if part]
+    parts.append(f"Version {sources.version_text} ({sources.kind})")
+    parts.append(f"- Meadow.OS {sources.os_sha}\n- Meadow-ESP32 {sources.esp_sha}\n"
+                 f"- runtime {runtime['commit'] if runtime else 'unknown'}")
+    return "\n\n".join(parts) + "\n"
 
 
 def build_manifest(spec: ReleaseSpec, sources: Sources, binaries: Binaries,

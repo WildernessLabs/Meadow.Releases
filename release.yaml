@@ -5,6 +5,10 @@ Release:
     Version: 2.999.51
     # Text description (Optional)
     Description: Beta 1, NUttX 12, Managed Code
+    # Release notes in Markdown, shown after the description (Optional).  Keep the "|" and indent the text.
+    # Notes: |
+    #     ## Highlights
+    #     - NuttX 12
     # Type of release (Full or Beta)
     Type: Beta
     # Information about the NuttX firmware
