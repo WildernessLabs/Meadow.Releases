@@ -89,6 +89,26 @@ class ReleaseFile(unittest.TestCase):
                          f"Beta 1\n\n- NuttX 12\n\nVersion 2.999.51.3 (Beta)\n\n"
                          f"- Meadow.OS {'a' * 40}\n- Meadow-ESP32 {'b' * 40}\n- runtime unknown\n")
 
+    def test_release_notes_legacy(self) -> None:
+        """A Legacy release names the Meadow repository, which holds the runtime."""
+        spec = self.load("Release:\n  Version: 2.5.7\n")
+        sources = cr.Sources("WildernessLabs/Meadow", "a" * 40, "b" * 40, [2, 5, 7, 0], kind="Beta")
+        self.assertEqual(cr.release_notes(spec, sources),
+                         f"Version 2.5.7.0 (Beta)\n\n"
+                         f"- Meadow {'a' * 40}\n- Meadow-ESP32 {'b' * 40}\n- runtime in Meadow\n")
+
+    def test_bump_version(self) -> None:
+        """BumpVersion defaults to true, takes true/false (or yes/no), and rejects anything else."""
+        base = "Release:\n  Version: 2.5.7\n  OS:\n    Commit: a\n{os}  ESP32:\n    Commit: b\n{esp}"
+        spec = self.load(base.format(os="", esp=""))
+        self.assertEqual((spec.os_bump, spec.esp32_bump), (True, True))
+        spec = self.load(base.format(os="    BumpVersion: true\n", esp="    BumpVersion: False\n"))
+        self.assertEqual((spec.os_bump, spec.esp32_bump), (True, False))
+        spec = self.load(base.format(os="    BumpVersion: no\n", esp="    BumpVersion: yes\n"))
+        self.assertEqual((spec.os_bump, spec.esp32_bump), (False, True))
+        with self.assertRaises(cr.ReleaseFileError):
+            self.load(base.format(os="    BumpVersion: maybe\n", esp=""))
+
     def test_missing_release_section(self) -> None:
         """A file without a Release section is reported, not a traceback."""
         with self.assertRaises(cr.ReleaseFileError):
@@ -112,9 +132,17 @@ class ReleaseFile(unittest.TestCase):
             self.assertEqual(len(checked[0]), parts)
             self.assertEqual(checked[1], "WildernessLabs/Meadow.OS")
 
-    def test_validate_rejects_legacy_source(self) -> None:
-        """Legacy releases are not supported yet."""
-        spec = self.load("Release:\n  Version: 2.999.1\n  OS:\n    Source: Legacy\n    Commit: a\n"
+    def test_validate_accepts_legacy_source(self) -> None:
+        """Legacy releases are built from the Meadow repository."""
+        spec = self.load("Release:\n  Version: 2.5.7\n  OS:\n    Source: Legacy\n    Commit: a\n"
+                         "  ESP32:\n    Commit: b\n")
+        checked = cr.validate_spec(spec, quiet_report())
+        assert checked is not None
+        self.assertEqual(checked[1], "WildernessLabs/Meadow")
+
+    def test_validate_rejects_unknown_source(self) -> None:
+        """An OS source that is not known is an error."""
+        spec = self.load("Release:\n  Version: 2.999.1\n  OS:\n    Source: Elsewhere\n    Commit: a\n"
                          "  ESP32:\n    Commit: b\n")
         report = quiet_report()
         with mock.patch.object(cr, "say"):
@@ -220,6 +248,18 @@ class VersionBump(unittest.TestCase):
                 mock.patch.object(cr, "gh_raw", side_effect=fake_raw), \
                 mock.patch.object(cr, "gh", return_value=pull_request):
             return cr.plan_bump("WildernessLabs/Meadow.OS", "2.999.51", "2.999.53")
+
+    def test_bump_version_false_skips_the_repository(self) -> None:
+        """A section with BumpVersion: false is planned as skipped, without asking GitHub."""
+        spec = cr.ReleaseSpec(Path("release.yaml"), "", "2.5.7", "", "", "", "", "Legacy", "a", "b",
+                              os_bump=True, esp32_bump=False)
+        with mock.patch.object(cr, "plan_bump", side_effect=lambda repo, *_: repo) as plan_bump:
+            plans = cr.bump_plans(spec, [2, 5, 7, 30], "WildernessLabs/Meadow")
+        plan_bump.assert_called_once_with("WildernessLabs/Meadow", "2.5.7", "2.5.9")
+        self.assertEqual(plans[0], "WildernessLabs/Meadow")
+        assert isinstance(plans[1], cr.BumpPlan)
+        self.assertEqual((plans[1].repo, plans[1].skip),
+                         ("WildernessLabs/Meadow-ESP32", "ESP32.BumpVersion is false in release.yaml"))
 
     def test_everything_needed(self) -> None:
         """At the released version with no branch: branch, commit and pull request."""

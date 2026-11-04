@@ -5,7 +5,9 @@ repositories:
 
 - [Meadow.OS](https://github.com/WildernessLabs/Meadow.OS): the OS, the Mono runtime and the
   managed assemblies (`Meadow.OS.bin`, `Meadow.OS.Update.bin`, `Meadow.OS.Runtime.bin`,
-  `meadow_assemblies/`).
+  `meadow_assemblies/`).  Releases still on the older OS come from
+  [Meadow](https://github.com/WildernessLabs/Meadow) (`OS.Source: Legacy`) instead, which builds
+  the same files.
 - [Meadow-ESP32](https://github.com/WildernessLabs/Meadow-ESP32): the ESP32 firmware
   (`bootloader.bin`, `partition-table.bin`, `MeadowComms.bin`).
 
@@ -51,9 +53,11 @@ Release:
 | `Description` | Optional text for the release title and notes.  Keep it to one line. |
 | `Notes` | Optional Markdown for the body of the release, shown after the description.  Write it as a YAML block (`Notes: \|` with the text indented below it) to keep several lines. |
 | `Type` | Optional, `Beta` or `Full`.  It is worked out from `y`, and the script stops if it disagrees. |
-| `OS.Source` | `Rebase` or `Meadow.OS` (the Meadow.OS repository).  `Legacy` is not supported yet. |
-| `OS.Commit` | The Meadow.OS commit to release. |
+| `OS.Source` | `Rebase` or `Meadow.OS` (the Meadow.OS repository), or `Legacy` (the Meadow repository). |
+| `OS.Commit` | The commit to release in the OS repository. |
+| `OS.BumpVersion` | Optional, `true` or `false` (default `true`).  Whether the OS repository's `version.txt` moves on after the release (see "The version bump"). |
 | `ESP32.Commit` | The Meadow-ESP32 commit to release. |
+| `ESP32.BumpVersion` | Optional, `true` or `false` (default `true`).  The same for Meadow-ESP32. |
 
 Use full 40-character hashes.  The script resolves shorter ones, but a short hash can be ambiguous.
 
@@ -163,9 +167,12 @@ you no longer need them.
 
 - The release file is complete and the version is valid.
 - `Type` (if given) matches `y`.
-- Both commits exist, and the Meadow.OS and Meadow-ESP32 versions match `release.yaml`.
+- Both commits exist, and the Meadow.OS and Meadow-ESP32 versions match `release.yaml`.  A `Legacy`
+  release uses the ESP32 firmware of the current line, so a different Meadow-ESP32 version is only a
+  warning.
 - The build number derived from the Meadow.OS commit matches any build number you typed.
 - The Mono runtime pinned by `MONO_RUNTIME_COMMIT` at the OS commit exists, with the right tree.
+  (Not for `Legacy`: the Meadow repository holds the runtime in its own tree.)
 - Your login can write to this repository, and the tag and release do not already exist.
 - `release.yaml` is committed and pushed (a warning in a dry run, an error in a real one).
 - You can write to Meadow.OS and Meadow-ESP32, and neither has the release tag on a different commit.
@@ -180,7 +187,7 @@ you no longer need them.
 | `Meadow.OS.zip` | `Meadow.OS.bin`, `Meadow.OS.Update.bin`, `Meadow.OS.Runtime.bin`, `meadow_assemblies/` |
 | `Meadow.Network.zip` | `bootloader.bin`, `partition-table.bin`, `MeadowComms.bin` and their `.md5` files |
 | `Meadow.Debug.zip` | ELF and map files for the OS, bootloader and ESP32 |
-| `manifest.json` | Generated: version, type, the SHA-256 of every file, and the full source commits |
+| `manifest.json` | Generated: version, type, generation (`3.0`, or `legacy` for a Legacy release), the SHA-256 of every file, and the full source commits |
 | `release.yaml` | The release file that was used |
 | `sources-*.tar.gz` | The Meadow.OS and Meadow-ESP32 sources at the released commits |
 
@@ -209,13 +216,15 @@ the tagging:
 ## The version bump
 
 After the release the script moves `version.txt` on in both source repositories, so the next build
-is a beta:
+is a beta.  Set `BumpVersion: false` in the `OS` or `ESP32` section of `release.yaml` to leave that
+repository alone, for example `ESP32.BumpVersion: false` for a `Legacy` release, whose Meadow-ESP32
+commit belongs to the current line.
 
 | Repository | Base branch |
 |------------|-------------|
 | Meadow.OS | `main` |
 | Meadow-ESP32 | `develop` |
-| Meadow (Legacy, not used yet) | `main` |
+| Meadow (Legacy) | `main` |
 
 For each one it creates a branch `meadow-<new version>` from the base branch, commits the new
 `version.txt`, and opens a pull request.  A repository is skipped, with a message, if its base
@@ -327,7 +336,6 @@ release file.
 
 ## Not done yet
 
-- `OS.Source: Legacy` is not supported, and old releases have not been imported from S3.
 - The Meadow CLI still reads the old S3 location.  It must be changed to download from these
   releases and to check the SHA-256 values in `manifest.json`.
 - Tag and release creation is not yet restricted to release managers on GitHub.  This repository
