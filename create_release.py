@@ -38,14 +38,33 @@ except ImportError:
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-# Where each release source lives and which workflow builds it.  "Legacy" is not supported yet.
+# Where each release source lives and which workflow builds it.  Both OS repositories build with a
+# workflow of the same name; they differ in the BCL artifact and in how the runtime is pinned.
+OS_REPO = "WildernessLabs/Meadow.OS"
+LEGACY_REPO = "WildernessLabs/Meadow"
 OS_SOURCES = {
-    "rebase": "WildernessLabs/Meadow.OS",
-    "meadow / rebase": "WildernessLabs/Meadow.OS",
-    "meadow.os": "WildernessLabs/Meadow.OS",
+    "legacy": LEGACY_REPO,
+    "rebase": OS_REPO,
+    "meadow / rebase": OS_REPO,
+    "meadow.os": OS_REPO,
 }
 OS_WORKFLOW = "Build OS and RT"
-OS_ARTIFACTS = ["Meadow.OS", "meadow_assemblies", "Meadow.OS Debug Symbols"]
+OS_ARTIFACTS = ["Meadow.OS", "Meadow.OS Debug Symbols"]
+# The artifact holding the BCL assemblies, and the folder inside it where they are.
+BCL_ARTIFACT = {
+    OS_REPO: ("meadow_assemblies", ""),
+    LEGACY_REPO: ("BCL", "meadow_assemblies"),
+}
+# The manifest's "generation" for each OS repository.
+GENERATION = {
+    OS_REPO: "3.0",
+    LEGACY_REPO: "legacy",
+}
+# Meadow.OS pins the Mono runtime in MONO_RUNTIME_COMMIT; Legacy holds the runtime in its own tree.
+RUNTIME_PINNED = {OS_REPO}
+# Legacy releases use the ESP32 firmware of the current line, so its version need not match the OS
+# version.  (Set ESP32.BumpVersion to false in release.yaml to leave its version.txt alone.)
+ESP32_SHARED = {LEGACY_REPO}
 ESP32_REPO = "WildernessLabs/Meadow-ESP32"
 ESP32_WORKFLOW = "Build"
 ESP32_ARTIFACTS = ["network", "build"]
@@ -56,9 +75,9 @@ RUN_EVENTS = ("push", "workflow_dispatch")
 
 # The branch each repository's version bump pull request targets.
 BUMP_BASE = {
-    "WildernessLabs/Meadow.OS": "main",
+    OS_REPO: "main",
     ESP32_REPO: "develop",
-    "WildernessLabs/Meadow": "main",
+    LEGACY_REPO: "main",
 }
 
 OS_FILES = ["Meadow.OS.bin", "Meadow.OS.Update.bin", "Meadow.OS.Runtime.bin"]
@@ -137,6 +156,8 @@ class ReleaseSpec:
     os_source: str
     os_commit: str
     esp32_commit: str
+    os_bump: bool = True
+    esp32_bump: bool = True
 
 
 @dataclass
@@ -298,6 +319,14 @@ def load_release_file(path: Path) -> ReleaseSpec:
     def text(section: Any, key: str) -> str:
         return str(section.get(key, "")).strip() if isinstance(section, dict) else ""
 
+    def flag(section_name: str, key: str) -> bool:
+        value = text(release.get(section_name), key).lower()
+        if value in ("", "true", "yes"):
+            return True
+        if value in ("false", "no"):
+            return False
+        raise ReleaseFileError(f"{section_name}.{key} must be true or false, not '{value}'")
+
     return ReleaseSpec(
         path=path,
         tag=text(release, "Tag"),
@@ -309,6 +338,8 @@ def load_release_file(path: Path) -> ReleaseSpec:
         os_source=text(release.get("OS"), "Source"),
         os_commit=text(release.get("OS"), "Commit"),
         esp32_commit=text(release.get("ESP32"), "Commit"),
+        os_bump=flag("OS", "BumpVersion"),
+        esp32_bump=flag("ESP32", "BumpVersion"),
     )
 
 
@@ -334,7 +365,7 @@ def validate_spec(spec: ReleaseSpec, report: Report) -> tuple[list[int], str] | 
 
     os_repo = OS_SOURCES.get(spec.os_source.lower())
     if os_repo is None:
-        report.fail(f"OS.Source '{spec.os_source}' is not supported (expected Rebase or Meadow.OS)")
+        report.fail(f"OS.Source '{spec.os_source}' is not supported (expected Legacy, Rebase or Meadow.OS)")
         return None
     return version, os_repo
 
@@ -408,7 +439,10 @@ def check_sources(spec: ReleaseSpec, version: list[int], os_repo: str, report: R
               f"version {sources.version_text}")
     if len(spec.version.split(".")) == 4 and spec.version != sources.version_text:
         report.fail(f"release.yaml says version {spec.version} but the derived version is {sources.version_text}")
-    if esp_version[:3] != sources.version[:3]:
+    if esp_version[:3] != sources.version[:3] and os_repo in ESP32_SHARED:
+        report.warn(f"{ESP32_REPO}@{esp_sha[:8]} version.txt is {esp_version_text}, not {wanted}; "
+                    f"allowed for a release from {os_repo}")
+    elif esp_version[:3] != sources.version[:3]:
         report.fail(f"{ESP32_REPO}@{esp_sha[:8]} version.txt is {esp_version_text}, expected {wanted}")
     else:
         report.ok(f"{ESP32_REPO} version.txt {esp_version_text} matches (its own build number is {esp_build})")
@@ -562,7 +596,8 @@ def check_source_tags(sources: Sources, dry_run: bool, report: Report) -> None:
 # Version bump.  After a release the version.txt of the source repositories moves on: y goes up by
 # 2 from a beta (odd) and by 1 from a full release (even), so the next build is a beta.  The change
 # goes on a branch meadow-<new version> and a pull request to the base branch in BUMP_BASE.  Every
-# step checks what already exists, so the bump is safe to run again.
+# step checks what already exists, so the bump is safe to run again.  BumpVersion: false in a
+# section of release.yaml leaves that repository alone.
 
 def plan_bump(repo: str, released: str, new_version: str) -> BumpPlan:
     """Work out which steps of the version bump a repository still needs."""
@@ -592,11 +627,18 @@ def plan_bump(repo: str, released: str, new_version: str) -> BumpPlan:
     return plan
 
 
-def bump_plans(version: Sequence[int], os_repo: str) -> list[BumpPlan]:
+def bump_plans(spec: ReleaseSpec, version: Sequence[int], os_repo: str) -> list[BumpPlan]:
     """Plan the version bump in the OS and ESP32 repositories after releasing `version`."""
     released = format_version(version[:3])
     new_version = f"{version[0]}.{version[1]}.{next_y(version[2])}"
-    return [plan_bump(repo, released, new_version) for repo in (os_repo, ESP32_REPO)]
+    plans = []
+    for repo, section, wanted in ((os_repo, "OS", spec.os_bump), (ESP32_REPO, "ESP32", spec.esp32_bump)):
+        if wanted:
+            plans.append(plan_bump(repo, released, new_version))
+        else:
+            plans.append(BumpPlan(repo, BUMP_BASE[repo], f"meadow-{new_version}", new_version, base_sha="",
+                                  skip=f"{section}.BumpVersion is false in release.yaml"))
+    return plans
 
 
 def describe_bump(plan: BumpPlan) -> None:
@@ -695,7 +737,8 @@ def fetch_binaries(sources: Sources, work: Path, report: Report) -> Binaries | N
     report.ok(f"ESP32 run {esp_run['id']} {esp_run['html_url']}")
 
     root = work / "download"
-    if not (download_artifacts(sources.os_repo, os_run, OS_ARTIFACTS, root / "os", report)
+    bcl_artifact, bcl_folder = BCL_ARTIFACT[sources.os_repo]
+    if not (download_artifacts(sources.os_repo, os_run, OS_ARTIFACTS + [bcl_artifact], root / "os", report)
             and download_artifacts(ESP32_REPO, esp_run, ESP32_ARTIFACTS, root / "esp32", report)):
         return None
 
@@ -718,10 +761,10 @@ def fetch_binaries(sources: Sources, work: Path, report: Report) -> Binaries | N
     if len(os_files) != len(OS_FILES) + 1 or len(esp_files) != len(ESP32_FILES) * 2:
         return None
 
-    bcl_dir = artifact_dir(root / "os", "meadow_assemblies")
+    bcl_dir = artifact_dir(root / "os", bcl_artifact) / bcl_folder
     bcl_files = sorted(path for path in bcl_dir.rglob("*") if path.is_file())
     if not any(path.suffix == ".dll" for path in bcl_files):
-        report.fail("the meadow_assemblies artifact contains no .dll files")
+        report.fail(f"the {bcl_artifact} artifact contains no .dll files in '{bcl_folder or '.'}'")
         return None
     return Binaries(root, os_run, esp_run, os_files, esp_files, bcl_dir, bcl_files)
 
@@ -739,8 +782,10 @@ def verify_binaries(binaries: Binaries, sources: Sources, report: Report) -> Non
     else:
         report.ok("build-info.json commit matches the pinned OS commit")
 
+    # Meadow.OS stamps "y.build <date>"; Legacy stamps "y.build" alone, as a C string.
     build_stamp = f"{sources.version[2]}.{sources.version[3]}"
-    if f"{build_stamp} ".encode() in binaries.os_files["Meadow.OS.Update.bin"].read_bytes():
+    update_bin = binaries.os_files["Meadow.OS.Update.bin"].read_bytes()
+    if f"{build_stamp} ".encode() in update_bin or f"\0{build_stamp}\0".encode() in update_bin:
         report.ok(f"Meadow.OS.Update.bin is stamped with build {build_stamp}")
     else:
         report.fail(f"Meadow.OS.Update.bin is not stamped with build {build_stamp}; "
@@ -808,7 +853,7 @@ def stage_sources(sources: Sources, out: Path, skip: bool, report: Report) -> li
     if skip:
         report.warn("source archives skipped (--skip-sources)")
         return []
-    archives = [download_sources(sources.os_repo, sources.os_sha, out, "Meadow.OS", report),
+    archives = [download_sources(sources.os_repo, sources.os_sha, out, sources.os_repo.split("/")[1], report),
                 download_sources(ESP32_REPO, sources.esp_sha, out, "Meadow-ESP32", report)]
     for archive in archives:
         report.ok(f"{archive.name} ({archive.stat().st_size} bytes)")
@@ -841,8 +886,14 @@ def release_notes(spec: ReleaseSpec, sources: Sources) -> str:
     runtime = sources.runtime
     parts = [part for part in (spec.description, spec.notes) if part]
     parts.append(f"Version {sources.version_text} ({sources.kind})")
-    parts.append(f"- Meadow.OS {sources.os_sha}\n- Meadow-ESP32 {sources.esp_sha}\n"
-                 f"- runtime {runtime['commit'] if runtime else 'unknown'}")
+    if runtime:
+        runtime_line = f"- runtime {runtime['commit']}"
+    elif sources.os_repo not in RUNTIME_PINNED:
+        runtime_line = f"- runtime in {sources.os_repo.split('/')[1]}"
+    else:
+        runtime_line = "- runtime unknown"
+    parts.append(f"- {sources.os_repo.split('/')[1]} {sources.os_sha}\n- Meadow-ESP32 {sources.esp_sha}\n"
+                 + runtime_line)
     return "\n\n".join(parts) + "\n"
 
 
@@ -852,7 +903,7 @@ def build_manifest(spec: ReleaseSpec, sources: Sources, binaries: Binaries,
     return {
         "tag": sources.tag,
         "version": sources.version_text,
-        "generation": "3.0",
+        "generation": GENERATION[sources.os_repo],
         "type": sources.kind,
         "description": spec.description,
         "minCLIVersion": spec.min_cli_version,
@@ -874,7 +925,7 @@ def run_bump_only(spec: ReleaseSpec, version: Sequence[int], os_repo: str, args:
     """Handle --bump-only: plan the version bump and, unless --dry-run, carry it out."""
     say()
     say("Version bump")
-    plans = bump_plans(version, os_repo)
+    plans = bump_plans(spec, version, os_repo)
     for plan in plans:
         describe_bump(plan)
     if args.dry_run or all(plan.skip for plan in plans):
@@ -943,7 +994,10 @@ def make_release(spec: ReleaseSpec, sources: Sources, args: argparse.Namespace, 
     say()
     say(f"Releases repository ({releases_repo})")
     target_commit = check_releases_repo(releases_repo, sources.tag, args.dry_run, report)
-    sources.runtime = runtime_pin(sources.os_repo, sources.os_sha, report)
+    if sources.os_repo in RUNTIME_PINNED:
+        sources.runtime = runtime_pin(sources.os_repo, sources.os_sha, report)
+    else:
+        report.ok(f"runtime is part of {sources.os_repo} at {sources.os_sha[:8]}")
 
     say()
     say("Binaries built by GitHub Actions")
@@ -960,7 +1014,7 @@ def make_release(spec: ReleaseSpec, sources: Sources, args: argparse.Namespace, 
 
     say()
     say("Version bump after the release")
-    plans = bump_plans(sources.version, sources.os_repo)
+    plans = bump_plans(spec, sources.version, sources.os_repo)
     for plan in plans:
         describe_bump(plan)
 
