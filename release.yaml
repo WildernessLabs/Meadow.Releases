@@ -1,22 +1,33 @@
 Release:
     # The GitHib tag to be used for this release (mandatory)
-    Tag: 2.999.51
+    Tag: 2.5.7
     # Version number (usually the same as the Tag)
-    Version: 2.999.51
+    Version: 2.5.7
     # Text description (Optional)
-    Description: Beta 1, NUttX 12, Managed Code
+    Description: Meadow 2.5.7
     # Release notes in Markdown, shown after the description (Optional).  Keep the "|" and indent the text.
-    # Notes: |
-    #     ## Highlights
-    #     - NuttX 12
+    Notes: |
+        ## Highlights
+        - Bluetooth pairing and bonding beta
     # Type of release (Full or Beta)
     Type: Beta
     # Information about the NuttX firmware
+    # OS:
+    #     # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
+    #     Source: Rebase
+    #     # Commit to be used as the source of this release
+    #     Commit: 383ad6a2d039a3df9a2466be7390cf4bac9cbf77
+    #     # Should the version number be bumped following the release
+    #     BumpVersion: true
     OS:
         # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
-        Source: Rebase
+        Source: Legacy
         # Commit to be used as the source of this release
-        Commit: a1998725c8b40e02000980081933ddb31377c81e
+        Commit: 6b09096998fb32f7d64dde1120e26cd9e7457413
+        # Should the version number be bumped following the release
+        BumpVersion: true
     ESP32:
         # Commit to be used as the source of this release
-        Commit: cb1fcc47e012af844d2ae441a0f3f7726a64d248
+        Commit: d36d6d1cb0109e3258a724feae6b89f8a6dbf177
+        # Should the version number be bumped following the release
+        BumpVersion: false
