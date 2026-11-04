@@ -1,33 +1,36 @@
 Release:
     # The GitHib tag to be used for this release (mandatory)
-    Tag: 2.5.7
+    Tag: 2.999.51
     # Version number (usually the same as the Tag)
-    Version: 2.5.7
+    Version: 2.999.51
     # Text description (Optional)
-    Description: Meadow 2.5.7
+    Description: Meadow 2.999.51
     # Release notes in Markdown, shown after the description (Optional).  Keep the "|" and indent the text.
     Notes: |
         ## Highlights
-        - Bluetooth pairing and bonding beta
+        - NuttX rebased to 12.12
+        - Bluetooth pairing and bonding
+        - Cell networking (BG95)
+        - Managed code updates
     # Type of release (Full or Beta)
     Type: Beta
     # Information about the NuttX firmware
-    # OS:
-    #     # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
-    #     Source: Rebase
-    #     # Commit to be used as the source of this release
-    #     Commit: 383ad6a2d039a3df9a2466be7390cf4bac9cbf77
-    #     # Should the version number be bumped following the release
-    #     BumpVersion: true
     OS:
         # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
-        Source: Legacy
+        Source: Rebase
         # Commit to be used as the source of this release
-        Commit: 6b09096998fb32f7d64dde1120e26cd9e7457413
+        Commit: 383ad6a2d039a3df9a2466be7390cf4bac9cbf77
         # Should the version number be bumped following the release
         BumpVersion: true
+    # OS:
+    #     # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
+    #     Source: Legacy
+    #     # Commit to be used as the source of this release
+    #     Commit: 6b09096998fb32f7d64dde1120e26cd9e7457413
+    #     # Should the version number be bumped following the release
+    #     BumpVersion: true
     ESP32:
         # Commit to be used as the source of this release
         Commit: d36d6d1cb0109e3258a724feae6b89f8a6dbf177
         # Should the version number be bumped following the release
-        BumpVersion: false
+        BumpVersion: true
