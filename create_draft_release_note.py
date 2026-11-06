@@ -8,9 +8,9 @@ release, and writes it to DraftReleaseNote.md as a starting point for the Notes 
 - the pull requests that resolve no issue,
 - the commits that reached the branch without a pull request.
 
-    ./generate_draft_release_note.py                     since the last release, up to the branch heads
-    ./generate_draft_release_note.py --release-yaml      up to the commits pinned in release.yaml
-    ./generate_draft_release_note.py --since 2.999.51.1  since a given tag (--base is the same)
+    ./create_draft_release_note.py                     since the last release, up to the branch heads
+    ./create_draft_release_note.py --release-yaml      up to the commits pinned in release.yaml
+    ./create_draft_release_note.py --since 2.999.51.1  since a given tag (--base is the same)
 
 The last release is the newest published release in this repository whose manifest.json comes from
 Meadow.OS; the manifest holds the commit of each source repository.  The runtime is the commit
