@@ -322,6 +322,37 @@ A version tag such as `1.0.0.0` cannot clash with new releases, which have versi
 Check the dry run output before the real run: it lists every warning (for example the unknown ESP32
 commit) and tells you if a tag or release already exists.
 
+## Drafting the release notes
+
+`generate_draft_release_note.py` lists what has changed since the last release, as a starting point
+for the `Notes` in `release.yaml`.  It writes `DraftReleaseNote.md` (ignored by git):
+
+```bash
+./generate_draft_release_note.py                     # since the last release, up to the branch heads
+./generate_draft_release_note.py --release-yaml      # up to the commits pinned in release.yaml
+./generate_draft_release_note.py --since 2.999.51.1  # since a given tag (--base is the same)
+```
+
+By default the starting point is the newest published release here with a Meadow.OS
+`manifest.json`, which holds the Meadow.OS, Meadow-ESP32 and runtime commits it was built from.
+`--since` (or `--base`) names the tag to start from instead.  If this repository has a release with
+that tag, its `manifest.json` gives the commits; otherwise the tag must exist in both Meadow.OS and
+Meadow-ESP32 (the release script tags the source commits of each release), and the runtime starts at
+the commit `MONO_RUNTIME_COMMIT` pins at the Meadow.OS tag.  The ranges end at `main` for
+Meadow.OS and `develop` for Meadow-ESP32 (or the `release.yaml` commits); the runtime range ends at
+the commit pinned in `MONO_RUNTIME_COMMIT`, because that is what the release builds.
+
+The note has three sections:
+
+- **Issues resolved**: each issue a merged pull request closes (its linked issues, or a "Fixes #12"
+  in its title or description), with the issue's title and the pull requests that fix it.  An issue
+  that is still open (for example one closed from a branch that is not the default) is marked.
+- **Pull requests without an issue**, by repository.
+- **Commits without a pull request**: commits pushed straight to the branch (merge commits are left
+  out).
+
+Version bump pull requests are left out.
+
 ## Changing the script
 
 `create_release.py` is typed and documented.  The logic that needs no network has unit tests:
