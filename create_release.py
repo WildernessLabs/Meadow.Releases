@@ -522,6 +522,14 @@ def check_new_release(repo: str, tag: str, report: Report) -> bool:
             report.fail(f"a {kind} named '{tag}' already exists in {repo}")
         except GhError:
             report.ok(f"no {kind} named '{tag}' in {repo}")
+
+    # gh creates a release with assets as a draft, uploads the assets, then publishes it, so a
+    # failed attempt can leave a draft behind.  Drafts have no tag and releases/tags does not see them.
+    drafts = [release for release in gh_json(f"repos/{repo}/releases?per_page=100")
+              if release["draft"] and release["tag_name"] == tag]
+    for draft in drafts:
+        report.fail(f"a draft release for '{tag}' is left from an earlier attempt; delete it and run again: "
+                    f"{draft['html_url']}")
     return True
 
 
@@ -964,7 +972,12 @@ def publish(sources: Sources, staged: Staged, plans: Sequence[BumpPlan], release
     command = ["release", "create", sources.tag, *map(str, staged.assets), "-R", releases_repo,
                "--title", staged.title, "--notes-file", str(staged.notes), "--target", target_commit]
     command += ["--prerelease", "--latest=false"] if sources.kind == "Beta" else ["--latest"]
-    say(gh(*command).strip())
+    try:
+        say(gh(*command).strip())
+    except GhError as error:
+        say(f"  ERROR: creating the release failed: {error}")
+        say("  Nothing was tagged or bumped.  Run again; the checks report any draft release left behind.")
+        return 1
 
     say()
     say("Tagging the source commits")

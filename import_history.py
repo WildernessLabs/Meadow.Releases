@@ -40,7 +40,7 @@ except ImportError:
     sys.exit("PyYAML is required: pip install pyyaml")
 
 # The repository the historical OS was built from.  Its commit is recorded in build-info.json.
-LEGACY_REPO = "WildernessLabs/Meadow"
+LEGACY_REPO = cr.LEGACY_REPO
 DEFAULT_HISTORY_DIR = cr.SCRIPT_DIR / "work" / "History"
 INFO_FILE_NAME = "history.yaml"
 NOTES_SUFFIX = ".md"

@@ -195,6 +195,43 @@ class Zips(unittest.TestCase):
             self.assertEqual((root / "one.zip").read_bytes(), (root / "two.zip").read_bytes())
 
 
+class Publishing(unittest.TestCase):
+    """The Releases repository checks and creating the release."""
+
+    def check(self, releases: list[dict[str, object]]) -> cr.Report:
+        """Run check_new_release with no tag or release, and `releases` as the release list."""
+        def fake_json(path: str) -> object:
+            if path.endswith("per_page=100"):
+                return releases
+            raise cr.GhError("Not Found")
+
+        report = quiet_report()
+        with mock.patch.object(cr, "gh_json", side_effect=fake_json), \
+                mock.patch.object(cr, "has_write_access", return_value=True), \
+                mock.patch.object(cr, "say"):
+            cr.check_new_release("o/r", "2.999.51.1", report)
+        return report
+
+    def test_draft_left_behind_is_an_error(self) -> None:
+        """A draft for the tag, left by a failed attempt, stops the release; other drafts do not."""
+        self.assertEqual(self.check([{"draft": True, "tag_name": "2.999.51.0", "html_url": "u0"}]).errors, [])
+        errors = self.check([{"draft": True, "tag_name": "2.999.51.1", "html_url": "u1"}]).errors
+        self.assertEqual(len(errors), 1)
+        self.assertIn("u1", errors[0])
+
+    def test_failed_create_stops_before_tagging(self) -> None:
+        """If creating the release fails, nothing is tagged or bumped and the result is 1."""
+        sources = cr.Sources("WildernessLabs/Meadow.OS", "a" * 40, "b" * 40, [2, 999, 51, 1], tag="2.999.51.1",
+                             kind="Beta")
+        staged = cr.Staged(Path("out"), [], Path("notes.md"), "title")
+        with mock.patch.object(cr, "gh", side_effect=cr.GhError("HTTP 502")), \
+                mock.patch.object(cr, "do_tag") as do_tag, mock.patch.object(cr, "do_bump") as do_bump, \
+                mock.patch.object(cr, "say"):
+            self.assertEqual(cr.publish(sources, staged, [], "o/r", "c" * 40, quiet_report()), 1)
+        do_tag.assert_not_called()
+        do_bump.assert_not_called()
+
+
 class Tagging(unittest.TestCase):
     """Deciding whether a source commit needs the release tag."""
 

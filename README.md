@@ -322,6 +322,48 @@ A version tag such as `1.0.0.0` cannot clash with new releases, which have versi
 Check the dry run output before the real run: it lists every warning (for example the unknown ESP32
 commit) and tells you if a tag or release already exists.
 
+## Drafting the release notes
+
+`create_draft_release_note.py` lists what has changed since the last Full release, up to now, as a
+starting point for the `Notes` in `release.yaml`.  It writes `DraftReleaseNote.md` (ignored by git):
+
+```bash
+./create_draft_release_note.py                     # since the last Full release, up to the branch heads
+./create_draft_release_note.py --release-yaml      # up to the commits pinned in release.yaml
+./create_draft_release_note.py --since 2.999.51.1  # since a given release or tag (--base is the same)
+```
+
+The last Full release is the newest published release here that is not a pre-release.  Its
+*operating system date* is the date of the Meadow.OS commit in its `manifest.json`.  `--since` (or
+`--base`) starts from another release here, or from a tag in Meadow.OS, instead.
+
+Each repository starts from the most exact point it has:
+
+| Repository | Starts at | Ends at |
+| --- | --- | --- |
+| Meadow.OS, Meadow-ESP32 | the commit in the release's `manifest.json`, else the release's tag in the repository, else the operating system date | `main` / `develop` (or the `release.yaml` commits) |
+| runtime | the commit in the `manifest.json`, else the commit `MONO_RUNTIME_COMMIT` pins at the starting Meadow.OS commit, else the operating system date | the commit pinned in `MONO_RUNTIME_COMMIT` |
+| Meadow.Core, Meadow.Contracts, Meadow.Units, Meadow.Logging, Meadow.Foundation | the operating system date (they are not tagged with the releases) | the default branch |
+
+The runtime is a fork of dotnet/runtime: commits that came from upstream are left out, and the note
+says how many.
+
+The note has these sections:
+
+- **Highlights**: "User to complete".
+- **Repository Overview**: where each repository's changes start and end, and how many commits.
+- **Issues Resolved**, in three groups: *Operating System* (Meadow.OS, Meadow-ESP32 and the
+  runtime), *Meadow.Core* (Meadow.Core, Meadow.Contracts, Meadow.Units and Meadow.Logging) and
+  *Meadow.Foundation*.
+  Each group lists the issues its merged pull requests close (linked issues, or a "Fixes #12" in the
+  title or description) with the pull requests that fix them, then its pull requests without an
+  issue.  An issue that is still open (for example one closed from a branch that is not the default)
+  is marked.
+- **Commits Without a Pull Request**: commits pushed straight to a branch, by repository (merge
+  commits are left out; long lists are folded).
+
+Version bump pull requests are left out.
+
 ## Changing the script
 
 `create_release.py` is typed and documented.  The logic that needs no network has unit tests:
