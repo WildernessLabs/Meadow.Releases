@@ -6,12 +6,12 @@ Release:
     # Text description (Optional)
     Description: Meadow 2.999.51
     # Release notes in Markdown, shown after the description (Optional).  Keep the "|" and indent the text.
-    Notes: |
-        ## Highlights
-        - NuttX rebased to 12.12
-        - Bluetooth pairing and bonding
-        - Cell networking (BG95)
-        - Managed code updates
+    # Notes: |
+    #     ## Highlights
+    #     - NuttX rebased to 12.12
+    #     - Bluetooth pairing and bonding
+    #     - Cell networking (BG95)
+    #     - Managed code updates
     # Type of release (Full or Beta)
     Type: Beta
     # Information about the NuttX firmware
