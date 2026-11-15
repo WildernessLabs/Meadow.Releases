@@ -1,10 +1,10 @@
 Release:
     # The GitHib tag to be used for this release (mandatory)
-    Tag: 2.999.51
+    Tag: 2.999.53
     # Version number (usually the same as the Tag)
-    Version: 2.999.51
+    Version: 2.999.53
     # Text description (Optional)
-    Description: Meadow 2.999.51
+    Description: Meadow 2.999.53
     # Release notes in Markdown, shown after the description (Optional).  Keep the "|" and indent the text.
     # Notes: |
     #     ## Highlights
@@ -19,7 +19,7 @@ Release:
         # Source of release (Legacy, Meadow / Rebase, Meadow.OS)
         Source: Rebase
         # Commit to be used as the source of this release
-        Commit: 383ad6a2d039a3df9a2466be7390cf4bac9cbf77
+        Commit: 3742695545213db8c7707cf1646f506e9b90d6ac
         # Should the version number be bumped following the release
         BumpVersion: true
     # OS:
@@ -31,6 +31,6 @@ Release:
     #     BumpVersion: true
     ESP32:
         # Commit to be used as the source of this release
-        Commit: d36d6d1cb0109e3258a724feae6b89f8a6dbf177
+        Commit: dd79b029056e32e3512592950b5b3580fd0ddaba
         # Should the version number be bumped following the release
         BumpVersion: true
