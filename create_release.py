@@ -7,6 +7,7 @@ creates the GitHub Release, tags the source commits and moves the version on.  S
 
     ./create_release.py --dry-run          run every check and stage the assets, publish nothing
     ./create_release.py                    the same, then create the release (asks first)
+    ./create_release.py --release-note=DraftReleaseNote.md   take the release notes from a file
 
 Requires: Python 3.9+, PyYAML, and the GitHub CLI (gh) logged in with access to the repositories.
 Nothing here depends on anything that is only available in CI, so a release manager can run it
@@ -1063,8 +1064,22 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--bump-only", action="store_true",
                         help="only do the version bump (branch, commit, pull request) for the versions in "
                              "release.yaml; use to repeat a bump that failed after the release was published")
+    parser.add_argument("--release-note", metavar="FILE",
+                        help="take the release notes (Markdown) from FILE instead of the Notes in release.yaml, "
+                             "for example a DraftReleaseNote.md that has been edited")
     parser.add_argument("--yes", action="store_true", help="do not ask for confirmation before publishing")
     return parser.parse_args(argv)
+
+
+def read_release_note(path: Path) -> str:
+    """Return the text of a release note file, stripped; raise ReleaseFileError if it is empty or unreadable."""
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError) as error:
+        raise ReleaseFileError(f"cannot read the release note {path}: {error}") from error
+    if not text:
+        raise ReleaseFileError(f"the release note {path} is empty")
+    return text
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -1076,8 +1091,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, ReleaseFileError, yaml.YAMLError) as error:
         say(f"cannot read {args.release_file}: {error}")
         return 1
+    if args.release_note:
+        try:
+            spec.notes = read_release_note(Path(args.release_note))
+        except ReleaseFileError as error:
+            say(str(error))
+            return 1
 
     say(f"{'DRY RUN: ' if args.dry_run else ''}release file {args.release_file}")
+    if args.release_note:
+        say(f"release notes from {args.release_note} (the Notes in the release file are not used)")
     say()
     say("Release file")
     checked = validate_spec(spec, report)
