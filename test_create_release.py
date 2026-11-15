@@ -97,6 +97,33 @@ class ReleaseFile(unittest.TestCase):
                          f"Version 2.5.7.0 (Beta)\n\n"
                          f"- Meadow {'a' * 40}\n- Meadow-ESP32 {'b' * 40}\n- runtime in Meadow\n")
 
+    def test_read_release_note(self) -> None:
+        """A release note file is read as Markdown and stripped; a missing or empty one is an error."""
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "DraftReleaseNote.md"
+            path.write_text("\n## Highlights\n\n- Cell networking\n\n", encoding="utf-8")
+            self.assertEqual(cr.read_release_note(path), "## Highlights\n\n- Cell networking")
+            path.write_text(" \n\n", encoding="utf-8")
+            with self.assertRaisesRegex(cr.ReleaseFileError, "is empty"):
+                cr.read_release_note(path)
+            with self.assertRaisesRegex(cr.ReleaseFileError, "cannot read"):
+                cr.read_release_note(Path(folder) / "missing.md")
+
+    def test_release_note_option(self) -> None:
+        """--release-note replaces the Notes in release.yaml, and a bad file stops the run before any check."""
+        with tempfile.TemporaryDirectory() as folder:
+            release = Path(folder) / "release.yaml"
+            release.write_text("Release:\n  Version: 2.999.51\n  Notes: from yaml\n", encoding="utf-8")
+            note = Path(folder) / "note.md"
+            note.write_text("from file\n", encoding="utf-8")
+            seen: list[str] = []
+            with mock.patch.object(cr, "validate_spec", side_effect=lambda spec, report: seen.append(spec.notes)), \
+                    mock.patch.object(cr, "say"):
+                cr.main([str(release), "--release-note", str(note)])
+                cr.main([str(release)])
+                self.assertEqual(cr.main([str(release), "--release-note", str(Path(folder) / "missing.md")]), 1)
+            self.assertEqual(seen, ["from file", "from yaml"])
+
     def test_bump_version(self) -> None:
         """BumpVersion defaults to true, takes true/false (or yes/no), and rejects anything else."""
         base = "Release:\n  Version: 2.5.7\n  OS:\n    Commit: a\n{os}  ESP32:\n    Commit: b\n{esp}"

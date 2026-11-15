@@ -160,6 +160,17 @@ gh run list -R WildernessLabs/Meadow-ESP32 --workflow Build --event push --branc
    creates the GitHub Release (a beta is a pre-release), tags the source commits, and does the version
    bump.
 
+The release notes are the `Notes` in `release.yaml`, unless you give a Markdown file with
+`--release-note`, which is used instead (use it on both the dry run and the real run):
+
+```bash
+./create_release.py --dry-run --release-note=DraftReleaseNote.md
+./create_release.py --release-note=DraftReleaseNote.md
+```
+
+The body of the GitHub Release is the `Description`, the notes, then the version and the source
+commits.  The dry run leaves it in `work/<tag>/<timestamp>/release/notes.md` to check.
+
 Each run works in a new timestamped folder under `work/`, which git ignores.  Delete old ones when
 you no longer need them.
 
@@ -363,6 +374,9 @@ The note has these sections:
   commits are left out; long lists are folded).
 
 Version bump pull requests are left out.
+
+Edit the draft (fill in the Highlights, remove the draft lines), then pass it to the release with
+`./create_release.py --release-note=DraftReleaseNote.md`.
 
 ## Changing the script
 
