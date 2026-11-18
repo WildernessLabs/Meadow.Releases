@@ -99,6 +99,19 @@ git -C <Meadow-ESP32 clone> fetch origin
 git -C <Meadow-ESP32 clone> log origin/develop --merges -5 --format='%H %ad %s' --date=short
 ```
 
+A pull request merged with "Rebase and merge" leaves no merge commit either, so `--merges` misses it
+too.  `get_commit_hashes.py` asks GitHub instead, so it sees every pull request however it was
+merged.  For every clone that sits beside this repository (`Rebase`, `Meadow.OS`, `Legacy`, `Meadow`
+and `Meadow-ESP32`) it lists the last pull requests merged into the default branch of the clone's
+origin on GitHub.  Each line gives the commit at the top of the branch after the merge (the commit
+GitHub Actions built, the one to pin in `release.yaml`), the merge date, the pull request number,
+the title and the branch.  A repository that is not cloned is skipped:
+
+```bash
+./get_commit_hashes.py     # the last 5 merged pull requests in each repository
+./get_commit_hashes.py 10  # the last 10
+```
+
 ### The last 5 squash (or any) commits
 
 A squash merge leaves one ordinary commit, which `--merges` does not list.  To see everything that
